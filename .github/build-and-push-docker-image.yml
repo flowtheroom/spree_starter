@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
+name: Build and Push Docker Image
+on:
+  push:
+    branches:
+      - "main"
+      - "beta"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment"
+        required: true
+        type: environment
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  build:
+    name: "Build"
+    environment: ${{ inputs.environment || github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Check variables"
+        shell: bash
+        run: |
+          errors=()
+          ${{ vars.DOCKERHUB_REPO != null && vars.DOCKERHUB_REPO != '' && '# "vars.DOCKERHUB_REPO" exists' || 'errors+=(''Missing "vars.DOCKERHUB_REPO"'')' }}
+          ${{ vars.DOCKERHUB_USERNAME != null && vars.DOCKERHUB_USERNAME != '' && '# "vars.DOCKERHUB_USERNAME" exists' || 'errors+=(''Missing "vars.DOCKERHUB_USERNAME"'')' }}
+          ${{ secrets.DOCKERHUB_TOKEN != null && secrets.DOCKERHUB_TOKEN != '' && '# "secrets.DOCKERHUB_TOKEN" exists' || 'errors+=(''Missing "secrets.DOCKERHUB_TOKEN"'')' }}
+          errors=$(printf '; %s' "${errors[@]}")
+          errors=${errors:2}
+
+          if [[ -n "$errors" ]]; then
+            echo "::error title=Missing variables::$errors"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Set up QEMU"
+        if: ${{ steps.should_continue.outputs.result == 'true' }}
+        uses: docker/setup-qemu-action@v3
+
+      - name: "Set up Docker Buildx"
+        if: ${{ steps.should_continue.outputs.result == 'true' }}
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: ${{ steps.resolve_supported_platforms.outputs.platforms }}
+
+      - name: "Login to Docker Hub"
+        if: ${{ steps.should_continue.outputs.result == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # * this step can potentially be replaced by a combination of `docker/metadata-action` and `docker/build-push-action`
+      - name: "Build and push Docker image"
+        env:
+          PLATFORMS: linux/amd64,linux/arm64
+        shell: bash
+        run: |
+          echo "Building image for platforms '${PLATFORMS}' and pushing to registry..."
+          docker buildx build --platform "${PLATFORMS}" \
+                              --push \
+                              ${{ format('--tag "{0}:latest{1}" \', vars.DOCKERHUB_REPO, vars.IMAGE_TAG_SUFFIX || '') || ' \' }}
+                              .
+  on-failure:
+    runs-on: ubuntu-latest
+    if: ${{ always() && needs.build.result == 'failure' }}
+    needs:
+      - build
+    environment: ${{ inputs.environment || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Slack Notification
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_USERNAME: GitHub Bot
+          SLACK_TITLE: ":x: Workflow Failure"
+          SLACK_MESSAGE: "Build and push docker image workflow has ${{ needs.build.result == 'timed_out' && 'timed out' || 'failed' }} [result: ${{ needs.build.result }}]"
+          SLACK_COLOR: failure
+          SLACK_FOOTER: ""
