@@ -1,20 +1,62 @@
 services:
   postgres:
     image: postgres:17-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+    restart: always
+    shm_size: 128mb
+    expose:
+      - 5432
     volumes:
-      - 'postgres:/var/lib/postgresql/data'
-    ports:
-      - "5432:5432"
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-q",
+          "-U",
+          "${POSTGRES_USER}",
+          "-d",
+          "${POSTGRES_DB}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    expose:
+      - 6379
     volumes:
-      - 'redis:/data'
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  spree:
+    # docker run -p 3000:3000 -e SECRET_KEY_BASE=... -e DATABASE_URL=... -e REDIS_URL=... spree
+    build: .
+    restart: always
+    ports:
+      - 3000:3000
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+      redis:
+        condition: service_healthy
+        restart: true
 
 volumes:
-  postgres:
-  redis:
+  postgres_data:
+  redis_data:
+

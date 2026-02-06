@@ -39,6 +39,10 @@ COPY . .
 # Precompiling assets for production without requiring secret RAILS_MASTER_KEY
 RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
+# Add custom locales
+RUN mv config/locales/spree_i18n/*.yml "$(bundle show spree_i18n)"/config/locales && \
+    rm -rf config/locales/spree_i18n
+
 
 # Final stage for app image
 FROM base
