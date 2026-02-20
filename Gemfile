@@ -103,3 +103,6 @@ gem "spree_i18n"
 gem "spree_stripe"
 gem "spree_klaviyo"
 gem "spree_paypal_checkout", "~> 0.5"
+
+# AWS SDK S3
+gem "aws-sdk-s3", require: false
