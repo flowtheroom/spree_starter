@@ -2,6 +2,10 @@ require "sidekiq/web" # require the web UI
 
 Rails.application.routes.draw do
   Spree::Core::Engine.add_routes do
+    post '/api/v2/platform/orders/:id/payment', to: 'api/v2/platform/orders#create_payment', as: :order_create_payment
+    post '/api/v2/platform/orders/:id/return', to: 'api/v2/platform/orders#return_order', as: :return_order
+    patch '/api/v2/platform/payments/:id/confirm', to: 'api/v2/platform/payments#confirm_payment', as: :confirm_payment
+
     # Storefront routes
     scope '(:locale)', locale: /#{Spree.available_locales.join('|')}/, defaults: { locale: nil } do
       devise_for(
