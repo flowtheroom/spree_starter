@@ -80,6 +80,13 @@ Rails.application.config.after_initialize do
   # Rails.application.config.spree.page_blocks << Spree::PageBlocks::BigRedButtonToCallSales
 
   # Rails.application.config.spree_storefront.head_partials << 'spree/shared/that_js_snippet_that_marketing_forced_me_to_include'
+
+  payment_state_options = Spree::Order::PAYMENT_STATES.map { |s| { value: s, label: I18n.t("spree.payment_states.#{s}", default: s.humanize) } }
+  payment_state_options += [
+    { value: 'refunded', label: I18n.t('spree.payment_states.refunded') },
+    { value: 'partially_refunded', label: I18n.t('spree.payment_states.partially_refunded') }
+  ]
+  Spree.admin.tables.orders.update :payment_state, value_options: payment_state_options
 end
 
 Spree.user_class = 'Spree::User'
